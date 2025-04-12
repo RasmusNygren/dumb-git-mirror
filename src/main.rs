@@ -14,6 +14,28 @@ struct Mirror {
     to: String,
 }
 
+impl Mirror {
+    fn update(&self) -> Result<()> {
+        let tempdir = TempDir::new().context("Failed to create temporary directory")?;
+        let out_path = "aknownname";
+        let to_remote_name = "target";
+
+        run_git_command(&["clone", &self.from, out_path], tempdir.path())
+            .context("Git clone failed")?;
+
+        let git_path = tempdir.path().join(out_path);
+        run_git_command(&["remote", "add", to_remote_name, &self.to], &git_path)
+            .context("Git remote add failed")?;
+
+        run_git_command(&["fetch", to_remote_name], &git_path).context("Git fetch failed")?;
+
+        run_git_command(&["push", to_remote_name, "HEAD", "--tags"], &git_path)
+            .context("Git push failed")?;
+
+        Ok(())
+    }
+}
+
 fn run_git_command(args: &[&str], cwd: &Path) -> Result<std::process::Output> {
     Command::new("git")
         .arg("-C")
@@ -21,25 +43,6 @@ fn run_git_command(args: &[&str], cwd: &Path) -> Result<std::process::Output> {
         .args(args)
         .output()
         .context("Git command failed")
-}
-
-fn update_mirror(from: &str, to: &str) -> Result<()> {
-    let tempdir = TempDir::new().context("Failed to create temporary directory")?;
-    let out_path = "aknownname";
-    let to_remote_name = "target";
-
-    run_git_command(&["clone", from, out_path], tempdir.path()).context("Git clone failed")?;
-
-    let git_path = tempdir.path().join(out_path);
-    run_git_command(&["remote", "add", to_remote_name, to], &git_path)
-        .context("Git remote add failed")?;
-
-    run_git_command(&["fetch", to_remote_name], &git_path).context("Git fetch failed")?;
-
-    run_git_command(&["push", to_remote_name, "HEAD", "--tags"], &git_path)
-        .context("Git push failed")?;
-
-    Ok(())
 }
 
 fn main() -> Result<()> {
@@ -56,9 +59,9 @@ fn main() -> Result<()> {
     let contents: Config = serde_yaml::from_str(&file)
         .context(format!("Failed to deserialize {} as yaml", file_name))?;
 
-    for target in &contents.mirrors {
-        update_mirror(&target.from, &target.to)?;
-        println!("Updated {} -> {}", target.from, target.to);
+    for mirror in &contents.mirrors {
+        mirror.update()?;
+        println!("Updated {} -> {}", mirror.from, mirror.to);
     }
 
     Ok(())
